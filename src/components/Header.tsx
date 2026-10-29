@@ -27,6 +27,7 @@ interface HeaderProps {
   pendingSyncCount: number;
   onOpenHeldModal: () => void;
   heldOrdersCount: number;
+  onOpenBackend: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,7 +43,8 @@ export const Header: React.FC<HeaderProps> = ({
   isOnline,
   pendingSyncCount,
   onOpenHeldModal,
-  heldOrdersCount
+  heldOrdersCount,
+  onOpenBackend
 }) => {
   const isAr = lang === 'ar';
 
@@ -174,6 +176,16 @@ export const Header: React.FC<HeaderProps> = ({
             className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-lg text-xs font-bold font-mono transition-colors"
           >
             {isAr ? 'EN' : 'عربي'}
+          </button>
+
+          {/* Admin Backend Console Button */}
+          <button
+            onClick={onOpenBackend}
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow transition-all active:scale-95"
+            title="Open Management Backend (F12)"
+          >
+            <span>⚙️</span>
+            <span>{isAr ? 'لوحة الإدارة' : 'Admin Backend'}</span>
           </button>
         </div>
       </div>
