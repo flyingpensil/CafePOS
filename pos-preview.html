@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>UAE POS - Standalone Interactive Terminal & Compliance Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    [dir="rtl"] { font-family: 'Cairo', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @media print {
+      body * { visibility: hidden; }
+      #printable-receipt, #printable-receipt * { visibility: visible; }
+      #printable-receipt { position: absolute; left: 0; top: 0; width: 80mm; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen overflow-hidden flex flex-col select-none">
+
+  <!-- TOP HEADER -->
+  <header class="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-md">
+    <div class="flex items-center gap-3">
+      <div id="mode-icon" class="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-xl text-white shadow-inner">
+        ☕
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 id="tenant-name" class="font-bold text-sm sm:text-base tracking-tight leading-none text-slate-100">
+            AL BARAKAH MODERN TRADING LLC
+          </h1>
+          <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-mono font-medium">
+            TRN: 100458923100003
+          </span>
+        </div>
+        <div class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+          <span id="branch-name">Al Rigga Branch (DXB-01)</span>
+          <span>•</span>
+          <span class="text-emerald-400 font-medium">UAE VAT 5% Standard</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Mode Switch -->
+    <div class="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700">
+      <button id="btn-mode-cafeteria" onclick="switchMode('CAFETERIA')" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white transition-all">
+        <span>🍔</span> <span id="label-cafeteria">Cafeteria / F&B</span>
+      </button>
+      <button id="btn-mode-stationery" onclick="switchMode('STATIONERY')" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white transition-all">
+        <span>📚</span> <span id="label-stationery">Stationery / Retail</span>
+      </button>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2.5">
+      <button onclick="openHeldModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5">
+        <span>📋</span> <span id="label-tabs">Tabs / Hold</span>
+        <span id="held-count-badge" class="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full text-[10px]">1</span>
+      </button>
+
+      <button onclick="popCashDrawer()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium" title="Pulse Cash Drawer (ESC p)">
+        💵 <span id="label-drawer">Drawer</span>
+      </button>
+
+      <button onclick="openShiftModal()" class="px-3 py-1.5 bg-emerald-950/80 border border-emerald-700 text-emerald-300 rounded-lg text-xs font-medium flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="shift-status-badge">Shift: Rashid Al Nuaimi</span>
+      </button>
+
+      <div class="px-2.5 py-1 rounded-md text-[11px] font-mono flex items-center gap-1.5 border bg-slate-800 text-emerald-400 border-slate-700">
+        <span>🟢</span> <span id="sync-status-badge">Online (Local Sync Ready)</span>
+      </div>
+
+      <button id="btn-lang" onclick="toggleLanguage()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-lg text-xs font-bold font-mono">
+        عربي
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN SPLIT WORKSPACE -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT: CAFETERIA MODE CONTAINER -->
+    <div id="view-cafeteria" class="flex-1 flex flex-col p-3 gap-2.5 overflow-hidden">
+      <!-- Order Type & Table Bar -->
+      <div class="flex items-center justify-between bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+        <div class="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-lg">
+          <button onclick="setOrderType('WALK_IN')" id="btn-walkin" class="px-3 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white">🚶 Walk-In</button>
+          <button onclick="setOrderType('TAKEAWAY')" id="btn-takeaway" class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white">🥡 Takeaway</button>
+          <button onclick="setOrderType('DINE_IN')" id="btn-dinein" class="px-3 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white">🍽️ Dine-In</button>
+        </div>
+
+        <div id="table-picker" class="hidden flex items-center gap-1.5 overflow-x-auto">
+          <span class="text-xs font-bold text-amber-400">Table:</span>
+          <button onclick="selectTable('T-01')" class="table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-amber-500 text-slate-950">T-01</button>
+          <button onclick="selectTable('T-02')" class="table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-slate-800 text-slate-300">T-02</button>
+          <button onclick="selectTable('T-03')" class="table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-slate-800 text-slate-300">T-03</button>
+          <button onclick="selectTable('T-04')" class="table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-slate-800 text-slate-300">T-04</button>
+        </div>
+      </div>
+
+      <!-- Categories Tabs -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" id="cafeteria-categories-bar"></div>
+
+      <!-- Touch Grid -->
+      <div class="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pr-1" id="cafeteria-products-grid"></div>
+    </div>
+
+    <!-- LEFT: STATIONERY MODE CONTAINER -->
+    <div id="view-stationery" class="hidden flex-1 flex flex-col p-3 gap-3 overflow-hidden">
+      <!-- Top Scanner & Search Bar -->
+      <div class="bg-slate-900 p-3 rounded-xl border border-slate-800 flex items-center gap-3">
+        <div class="relative flex-1">
+          <input id="barcode-input" type="text" placeholder="Scan Barcode (USB/BT) or Search by SKU / Name..." 
+            onkeydown="if(event.key==='Enter') handleManualBarcode(this.value)"
+            class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500" />
+          <span class="absolute left-3 top-3 text-slate-400 text-xs">🔍</span>
+        </div>
+        <div class="flex items-center gap-2 bg-blue-950/60 border border-blue-800 px-3 py-2 rounded-lg text-xs text-blue-300">
+          <span class="animate-pulse">📶</span>
+          <span class="font-mono text-[11px]">Hardware Wedge Listener Active</span>
+        </div>
+      </div>
+
+      <!-- Split: Catalog and Loose Service Calculator -->
+      <div class="flex-1 flex gap-3 overflow-hidden">
+        <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl flex flex-col overflow-hidden">
+          <div class="p-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 font-medium">
+            <span>Item & Stock Level</span>
+            <span>Price (Incl. 5% VAT)</span>
+          </div>
+          <div class="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-1" id="stationery-catalog-list"></div>
+        </div>
+
+        <!-- Custom Copy/Print Service Calculator -->
+        <div class="w-80 bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center gap-2 pb-2 mb-3 border-b border-slate-800">
+              <span class="text-base">🖨️</span>
+              <div>
+                <h3 class="text-xs font-bold text-slate-200">Copy & Print Calculator</h3>
+                <p class="text-[10px] text-slate-400">Loose service instant billing</p>
+              </div>
+            </div>
+
+            <div class="space-y-1.5 mb-3" id="service-options-list"></div>
+
+            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 mb-3">
+              <label class="text-[11px] font-semibold text-slate-400 block mb-1.5">Pages / Quantity:</label>
+              <div class="flex items-center gap-1.5">
+                <button onclick="adjustServiceQty(-10)" class="px-2.5 py-1.5 bg-slate-800 text-slate-200 rounded font-bold text-xs">-10</button>
+                <button onclick="adjustServiceQty(-1)" class="px-2.5 py-1.5 bg-slate-800 text-slate-200 rounded font-bold text-xs">-1</button>
+                <input id="service-qty-input" type="number" min="1" value="20" onchange="renderServiceTotal()" class="w-full text-center bg-slate-900 border border-slate-700 rounded py-1.5 text-xs text-white font-mono font-bold" />
+                <button onclick="adjustServiceQty(1)" class="px-2.5 py-1.5 bg-slate-800 text-slate-200 rounded font-bold text-xs">+1</button>
+                <button onclick="adjustServiceQty(10)" class="px-2.5 py-1.5 bg-slate-800 text-slate-200 rounded font-bold text-xs">+10</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-xs text-slate-400">Total:</span>
+              <span id="service-calc-total" class="text-base font-extrabold text-blue-400 font-mono">AED 5.00</span>
+            </div>
+            <button onclick="addCustomServiceToCart()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5">
+              <span>➕</span> <span>Add Service Line</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: FIXED CART & STATUTORY UAE VAT BREAKDOWN -->
+    <div class="w-96 bg-slate-900 border-l border-slate-800 flex flex-col h-full">
+      <!-- Cart Header -->
+      <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span>🛒</span>
+          <div>
+            <h2 class="text-xs font-bold text-slate-100" id="cart-title">Current Order</h2>
+            <div id="cart-order-meta" class="text-[11px] text-amber-400 font-medium">Walk-In</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="holdCurrentCart()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium border border-slate-700">
+            ⏸️ Hold
+          </button>
+          <button onclick="clearCurrentCart()" class="px-2 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 rounded text-xs border border-rose-800">
+            🗑️
+          </button>
+        </div>
+      </div>
+
+      <!-- Items List -->
+      <div class="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1" id="cart-items-container"></div>
+
+      <!-- VAT & Totals Breakdown -->
+      <div class="p-3.5 bg-slate-850 border-t border-slate-800 space-y-2">
+        <div class="space-y-1.5 text-xs text-slate-300">
+          <div class="flex justify-between">
+            <span class="text-slate-400">Taxable Subtotal (Net):</span>
+            <span id="txt-subtotal-taxable" class="font-mono">AED 0.00</span>
+          </div>
+          <div class="flex justify-between items-center text-emerald-400 font-bold">
+            <span>VAT Standard (5%):</span>
+            <span id="txt-vat-total" class="font-mono">AED 0.00</span>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-slate-800 flex items-baseline justify-between">
+          <div>
+            <span class="text-xs font-bold text-slate-300 block">TOTAL PAYABLE</span>
+            <span class="text-[10px] text-slate-500 font-mono">Prices incl. 5% UAE VAT</span>
+          </div>
+          <span id="txt-grand-total" class="text-2xl font-black text-amber-400 font-mono tracking-tight">
+            AED 0.00
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button onclick="promptSupervisorDiscount()" class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700">
+            🏷️ Discount (PIN)
+          </button>
+          <button onclick="fastExactCashCheckout()" class="py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-sm">
+            ⚡ Exact Cash (F4)
+          </button>
+        </div>
+
+        <button onclick="openPaymentModal()" class="w-full py-3 bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-sm rounded-xl shadow-lg flex items-center justify-center gap-2">
+          <span>💳</span> <span>PAY / SETTLE BILL (F5)</span>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODALS CONTAINER -->
+  <div id="modal-container"></div>
+
+  <!-- APPLICATION LOGIC & COMPLIANCE SCRIPTS -->
+  <script>
+    // --- Master Data ---
+    const TENANT = {
+      nameEn: "AL BARAKAH MODERN TRADING LLC",
+      nameAr: "شركة البركة للتجارة الحديثة ذ.م.م",
+      trn: "100458923100003",
+      branchEn: "Al Rigga Branch (DXB-01)",
+      branchAr: "فرع شارع الرقة (DXB-01)",
+      address: "Shop 3, Al Rigga Road, Deira, Dubai, UAE",
+      phone: "+971 4 223 8890"
+    };
+
+    const PRODUCTS = [
+      { id: 'p1', sku: 'BEV-KARAK', barcode: '6291001001', nameEn: 'Special Karak Chai', nameAr: 'شاي كرك مميز', cat: 'hot', price: 1.50, mode: 'fnb', mods: true },
+      { id: 'p2', sku: 'BEV-SULAIMANI', barcode: '6291001002', nameEn: 'Sulaimani Mint Tea', nameAr: 'شاي سليماني أحمر بالنعناع', cat: 'hot', price: 1.00, mode: 'fnb' },
+      { id: 'p3', sku: 'FNB-OMAN-PARATHA', barcode: '6291001003', nameEn: 'Oman Chips & Cheese Paratha', nameAr: 'براتا بطاطس عمان وجبن كرافت', cat: 'sand', price: 5.00, mode: 'fnb', mods: true },
+      { id: 'p4', sku: 'FNB-CLUB-JUMBO', barcode: '6291001004', nameEn: 'Chicken Club Sandwich Jumbo', nameAr: 'كلوب ساندوتش دجاج جامبو', cat: 'sand', price: 15.00, mode: 'fnb', mods: true },
+      { id: 'p5', sku: 'FNB-SHAW-ARABIC', barcode: '6291001005', nameEn: 'Chicken Shawarma Arabic Plate', nameAr: 'صحن شاورما دجاج عربي', cat: 'shaw', price: 18.00, mode: 'fnb', mods: true },
+      { id: 'p6', sku: 'BEV-ORANGE-FRESH', barcode: '6291001006', nameEn: 'Fresh Orange Juice 500ml', nameAr: 'عصير برتقال طازج 500 مل', cat: 'juice', price: 12.00, mode: 'fnb' },
+      // Stationery
+      { id: 'p7', sku: 'PAP-DBLA-A4', barcode: '8851907001015', nameEn: 'Double A Copy Paper A4 80gsm (500 Sheets)', nameAr: 'ورق تصوير دبل ايه A4 80 جرام', price: 18.50, mode: 'retail', stock: 45, unit: 'PACK' },
+      { id: 'p8', sku: 'PEN-FC-07B', barcode: '4005401423512', nameEn: 'Faber-Castell 0.7mm Blue Pen (Box of 10)', nameAr: 'أقلام حبر فايبر كاستل أزرق (علبة 10)', price: 12.00, mode: 'retail', stock: 32, unit: 'BOX' },
+      { id: 'p9', sku: 'PEN-UNI-EYE-BK', barcode: '4902778913925', nameEn: 'Uni-ball Eye UB-150 Micro Black', nameAr: 'قلم حبر سائل يوني بول آي أسود', price: 7.50, mode: 'retail', stock: 24, unit: 'PCS' },
+      { id: 'p10', sku: 'CALC-CAS-991', barcode: '4549526600747', nameEn: 'Casio FX-991EX Scientific Calculator', nameAr: 'آلة حاسبة علمية كاسيو 991', price: 75.00, mode: 'retail', stock: 6, unit: 'PCS' },
+      { id: 'p11', sku: 'FIL-CLR-40P', barcode: '6291012345678', nameEn: 'A4 Display Clear Book 40 Pockets', nameAr: 'ملف عرض شفاف A4 عدد 40 جيب', price: 8.50, mode: 'retail', stock: 18, unit: 'PCS' }
+    ];
+
+    const SERVICES = [
+      { id: 's1', nameEn: 'Photocopy B&W (A4)', rate: 0.25, unit: 'pages' },
+      { id: 's2', nameEn: 'Color Laser Print (A4)', rate: 1.00, unit: 'pages' },
+      { id: 's3', nameEn: 'Thermal Lamination (A4)', rate: 2.50, unit: 'sheets' },
+      { id: 's4', nameEn: 'Thermal Lamination (A3)', rate: 5.00, unit: 'sheets' },
+      { id: 's5', nameEn: 'Spiral Binding (Plastic)', rate: 7.00, unit: 'books' }
+    ];
+
+    // --- State ---
+    let currentMode = 'CAFETERIA';
+    let currentLang = 'en';
+    let currentOrderType = 'WALK_IN';
+    let currentTable = null;
+    let cart = [];
+    let orderDiscount = 0;
+    let selectedService = SERVICES[0];
+    let heldTabs = [
+      { id: 'tab-1', table: 'T-02', type: 'DINE_IN', items: [{ name: 'Special Karak Chai', qty: 2, price: 1.50 }], subtotal: 3.00, time: '14:35' }
+    ];
+    let currentShift = { cashier: 'Rashid Al Nuaimi', float: 500, cashSales: 0, cardSales: 0, invoicesCount: 0 };
+    let invoiceSeq = 42;
+
+    // --- UAE FTA TLV QR Generator ---
+    function generateUaeTlvBase64(sellerName, trn, timestamp, totalWithVat, vatAmount) {
+      function encodeTag(tagNum, strVal) {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(strVal);
+        const tag = new Uint8Array(2 + bytes.length);
+        tag[0] = tagNum;
+        tag[1] = bytes.length;
+        tag.set(bytes, 2);
+        return tag;
+      }
+
+      const t1 = encodeTag(1, sellerName);
+      const t2 = encodeTag(2, trn);
+      const t3 = encodeTag(3, timestamp);
+      const t4 = encodeTag(4, totalWithVat.toFixed(2));
+      const t5 = encodeTag(5, vatAmount.toFixed(2));
+
+      const totalLen = t1.length + t2.length + t3.length + t4.length + t5.length;
+      const combined = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const t of [t1, t2, t3, t4, t5]) {
+        combined.set(t, offset);
+        offset += t.length;
+      }
+
+      let bin = '';
+      for (let i = 0; i < combined.length; i++) bin += String.fromCharCode(combined[i]);
+      return btoa(bin);
+    }
+
+    // --- Mode & Language Switching ---
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('btn-mode-cafeteria').className = mode === 'CAFETERIA' 
+        ? 'flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white' 
+        : 'flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white';
+      document.getElementById('btn-mode-stationery').className = mode === 'STATIONERY'
+        ? 'flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold bg-blue-600 text-white'
+        : 'flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white';
+
+      document.getElementById('mode-icon').innerText = mode === 'CAFETERIA' ? '☕' : '✒️';
+      document.getElementById('view-cafeteria').classList.toggle('hidden', mode !== 'CAFETERIA');
+      document.getElementById('view-stationery').classList.toggle('hidden', mode !== 'STATIONERY');
+    }
+
+    function toggleLanguage() {
+      currentLang = currentLang === 'en' ? 'ar' : 'en';
+      document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+      document.getElementById('btn-lang').innerText = currentLang === 'ar' ? 'EN' : 'عربي';
+      renderCafeteriaGrid();
+      renderStationeryCatalog();
+      renderCart();
+    }
+
+    // --- Cafeteria Grid Rendering ---
+    function renderCafeteriaGrid() {
+      const isAr = currentLang === 'ar';
+      const fnbProducts = PRODUCTS.filter(p => p.mode === 'fnb');
+      const grid = document.getElementById('cafeteria-products-grid');
+      grid.innerHTML = fnbProducts.map(p => `
+        <button onclick="handleProductTap('${p.id}')" class="flex flex-col justify-between p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500 hover:bg-slate-800/90 active:scale-95 transition-all text-left">
+          <div>
+            <div class="flex items-start justify-between gap-1">
+              <span class="text-sm font-bold text-slate-100">${p.nameEn}</span>
+              ${p.mods ? '<span class="text-[9px] bg-amber-950 text-amber-300 border border-amber-800 px-1 rounded">MODS</span>' : ''}
+            </div>
+            <div class="text-xs text-slate-400 mt-0.5">${p.nameAr}</div>
+          </div>
+          <div class="flex items-baseline justify-between mt-3 pt-2 border-t border-slate-800">
+            <span class="text-xs text-slate-500">AED</span>
+            <span class="text-base font-black text-amber-400 font-mono">${p.price.toFixed(2)}</span>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    function handleProductTap(productId) {
+      const p = PRODUCTS.find(x => x.id === productId);
+      if (!p) return;
+      if (p.mods) {
+        openModifierModal(p);
+      } else {
+        addToCart(p.nameEn, p.nameAr, p.price, 1, []);
+      }
+    }
+
+    // --- Stationery Catalog & Calculator ---
+    function renderStationeryCatalog() {
+      const retail = PRODUCTS.filter(p => p.mode === 'retail');
+      const container = document.getElementById('stationery-catalog-list');
+      container.innerHTML = retail.map(p => `
+        <button onclick="addToCart('${p.nameEn}', '${p.nameAr}', ${p.price}, 1)" class="w-full p-3 flex items-center justify-between hover:bg-slate-800/70 text-left transition-colors">
+          <div>
+            <div class="text-xs font-bold text-slate-200">${p.nameEn}</div>
+            <div class="text-[11px] text-slate-400">${p.nameAr}</div>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="text-[10px] font-mono bg-slate-800 text-slate-400 px-1 rounded">${p.sku}</span>
+              <span class="text-[10px] font-mono ${p.stock <= 8 ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-slate-800 text-emerald-400'} px-1 rounded">
+                Stock: ${p.stock} ${p.unit} ${p.stock <= 8 ? '(LOW!)' : ''}
+              </span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-sm font-bold text-blue-400 font-mono">AED ${p.price.toFixed(2)}</div>
+            <div class="text-[10px] text-slate-500">per ${p.unit}</div>
+          </div>
+        </button>
+      `).join('');
+
+      // Services
+      const srvContainer = document.getElementById('service-options-list');
+      srvContainer.innerHTML = SERVICES.map(s => `
+        <button onclick="selectService('${s.id}')" class="w-full p-2 rounded-lg text-xs font-medium border flex items-center justify-between transition-all ${selectedService.id === s.id ? 'bg-blue-600/20 border-blue-500 text-blue-200' : 'bg-slate-950 border-slate-800 text-slate-300'}">
+          <span>${s.nameEn}</span>
+          <span class="font-mono text-blue-400 font-bold">${s.rate.toFixed(2)} AED</span>
+        </button>
+      `).join('');
+    }
+
+    function selectService(id) {
+      selectedService = SERVICES.find(s => s.id === id);
+      renderStationeryCatalog();
+      renderServiceTotal();
+    }
+
+    function adjustServiceQty(delta) {
+      const input = document.getElementById('service-qty-input');
+      const val = Math.max(1, (parseInt(input.value) || 1) + delta);
+      input.value = val;
+      renderServiceTotal();
+    }
+
+    function renderServiceTotal() {
+      const qty = parseInt(document.getElementById('service-qty-input').value) || 1;
+      const total = selectedService.rate * qty;
+      document.getElementById('service-calc-total').innerText = `AED ${total.toFixed(2)}`;
+    }
+
+    function addCustomServiceToCart() {
+      const qty = parseInt(document.getElementById('service-qty-input').value) || 1;
+      const total = selectedService.rate * qty;
+      addToCart(`${selectedService.nameEn} (${qty} ${selectedService.unit})`, selectedService.nameEn, total, 1);
+    }
+
+    function handleManualBarcode(barcode) {
+      if (!barcode.trim()) return;
+      const found = PRODUCTS.find(p => p.barcode === barcode.trim() || p.sku.toLowerCase() === barcode.trim().toLowerCase());
+      if (found) {
+        addToCart(found.nameEn, found.nameAr, found.price, 1);
+        document.getElementById('barcode-input').value = '';
+      } else {
+        alert(`Barcode ${barcode} not found in catalog!`);
+      }
+    }
+
+    // --- Order Types & Tables ---
+    function setOrderType(type) {
+      currentOrderType = type;
+      document.getElementById('btn-walkin').className = type === 'WALK_IN' ? 'px-3 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white' : 'px-3 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white';
+      document.getElementById('btn-takeaway').className = type === 'TAKEAWAY' ? 'px-3 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white' : 'px-3 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white';
+      document.getElementById('btn-dinein').className = type === 'DINE_IN' ? 'px-3 py-1.5 rounded-md text-xs font-bold bg-amber-600 text-white' : 'px-3 py-1.5 rounded-md text-xs font-bold text-slate-300 hover:text-white';
+      document.getElementById('table-picker').classList.toggle('hidden', type !== 'DINE_IN');
+      document.getElementById('cart-order-meta').innerText = type + (currentTable ? ` • #${currentTable}` : '');
+    }
+
+    function selectTable(tbl) {
+      currentTable = tbl;
+      document.querySelectorAll('.table-btn').forEach(b => {
+        b.className = b.innerText === tbl ? 'table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-amber-500 text-slate-950' : 'table-btn px-2.5 py-1 text-xs rounded font-bold font-mono bg-slate-800 text-slate-300';
+      });
+      document.getElementById('cart-order-meta').innerText = `Dine-In • #${tbl}`;
+    }
+
+    // --- Cart & VAT 5% Calculations ---
+    function addToCart(nameEn, nameAr, unitPrice, qty, mods = []) {
+      const existing = cart.find(i => i.nameEn === nameEn && JSON.stringify(i.mods) === JSON.stringify(mods));
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        cart.push({ id: Date.now() + Math.random(), nameEn, nameAr, unitPrice, qty, mods });
+      }
+      renderCart();
+    }
+
+    function updateCartQty(idx, newQty) {
+      if (newQty <= 0) {
+        cart.splice(idx, 1);
+      } else {
+        cart[idx].qty = newQty;
+      }
+      renderCart();
+    }
+
+    function clearCurrentCart() {
+      cart = [];
+      orderDiscount = 0;
+      renderCart();
+    }
+
+    function calculateCartTotals() {
+      const gross = cart.reduce((acc, i) => acc + (i.unitPrice * i.qty), 0) - orderDiscount;
+      const finalGross = Math.max(0, gross);
+      // UAE VAT 5% inclusive math: Taxable = Gross / 1.05 | VAT = Gross - Taxable
+      const taxable = Math.round((finalGross / 1.05) * 100) / 100;
+      const vat = Math.round((finalGross - taxable) * 100) / 100;
+      return { gross: finalGross, taxable, vat };
+    }
+
+    function renderCart() {
+      const container = document.getElementById('cart-items-container');
+      if (cart.length === 0) {
+        container.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-slate-500 text-xs py-10">
+            <span class="text-3xl mb-2">🧾</span>
+            <p>Cart is empty</p>
+          </div>
+        `;
+      } else {
+        container.innerHTML = cart.map((item, idx) => `
+          <div class="py-2 px-1 flex flex-col gap-1">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="text-xs font-semibold text-slate-200">${item.nameEn}</div>
+                <div class="text-[10px] text-slate-400">${item.nameAr}</div>
+                ${item.mods && item.mods.length ? `<div class="text-[10px] text-amber-400 pl-1">↳ ${item.mods.join(', ')}</div>` : ''}
+              </div>
+              <div class="text-right">
+                <div class="text-xs font-bold font-mono text-slate-100">AED ${(item.unitPrice * item.qty).toFixed(2)}</div>
+                <div class="text-[10px] text-slate-500">@${item.unitPrice.toFixed(2)}</div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between mt-1 pt-1 border-t border-slate-800/40">
+              <div class="flex items-center gap-1.5">
+                <button onclick="updateCartQty(${idx}, ${item.qty - 1})" class="w-6 h-6 rounded bg-slate-800 text-slate-200 text-xs font-bold">-</button>
+                <span class="w-8 text-center text-xs font-bold font-mono">${item.qty}</span>
+                <button onclick="updateCartQty(${idx}, ${item.qty + 1})" class="w-6 h-6 rounded bg-slate-800 text-slate-200 text-xs font-bold">+</button>
+              </div>
+              <button onclick="updateCartQty(${idx}, 0)" class="text-[11px] text-rose-400 hover:text-rose-300">✕ Remove</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      const totals = calculateCartTotals();
+      document.getElementById('txt-subtotal-taxable').innerText = `AED ${totals.taxable.toFixed(2)}`;
+      document.getElementById('txt-vat-total').innerText = `AED ${totals.vat.toFixed(2)}`;
+      document.getElementById('txt-grand-total').innerText = `AED ${totals.gross.toFixed(2)}`;
+    }
+
+    // --- Hold / Park Tabs ---
+    function holdCurrentCart() {
+      if (cart.length === 0) return;
+      const totals = calculateCartTotals();
+      heldTabs.unshift({
+        id: `tab-${Date.now()}`,
+        table: currentTable,
+        type: currentOrderType,
+        items: [...cart],
+        subtotal: totals.gross,
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      });
+      document.getElementById('held-count-badge').innerText = heldTabs.length;
+      clearCurrentCart();
+      alert('Order parked successfully to tabs!');
+    }
+
+    function openHeldModal() {
+      const modal = document.getElementById('modal-container');
+      modal.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl p-4 shadow-2xl">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
+              <h3 class="font-bold text-sm text-slate-100">📋 Parked Orders & Table Tabs</h3>
+              <button onclick="closeModal()" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div class="space-y-2 max-h-80 overflow-y-auto">
+              ${heldTabs.length === 0 ? '<div class="text-center py-6 text-slate-500 text-xs">No held orders.</div>' : heldTabs.map((t, idx) => `
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                  <div>
+                    <span class="text-xs font-bold text-amber-400 font-mono">${t.table ? `Table #${t.table}` : 'Walk-In'}</span>
+                    <span class="text-[11px] text-slate-400 ml-2">(${t.time})</span>
+                    <div class="text-[11px] text-slate-300 mt-1">${t.items.map(i => `${i.qty}x ${i.nameEn || i.name}`).join(', ')}</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-bold text-sm text-white">AED ${t.subtotal.toFixed(2)}</span>
+                    <button onclick="recallHeldTab(${idx})" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-lg">Recall</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function recallHeldTab(idx) {
+      const tab = heldTabs.splice(idx, 1)[0];
+      cart = tab.items.map(i => ({
+        id: Date.now() + Math.random(),
+        nameEn: i.nameEn || i.name,
+        nameAr: i.nameAr || '',
+        unitPrice: i.unitPrice || i.price,
+        qty: i.qty,
+        mods: i.mods || []
+      }));
+      if (tab.table) selectTable(tab.table);
+      setOrderType(tab.type);
+      document.getElementById('held-count-badge').innerText = heldTabs.length;
+      closeModal();
+      renderCart();
+    }
+
+    // --- Fast Exact Cash Checkout ---
+    function fastExactCashCheckout() {
+      if (cart.length === 0) return;
+      const totals = calculateCartTotals();
+      completeSale('CASH', totals.gross, 0);
+    }
+
+    // --- Payment Tender Modal ---
+    function openPaymentModal() {
+      if (cart.length === 0) return;
+      const totals = calculateCartTotals();
+      const modal = document.getElementById('modal-container');
+      modal.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl p-5 shadow-2xl">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+              <h3 class="font-bold text-sm text-slate-100">💳 Settle Payment</h3>
+              <button onclick="closeModal()" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            
+            <div class="my-4 bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+              <div>
+                <span class="text-xs text-slate-400 block">Total Due (Incl. 5% VAT)</span>
+                <span class="text-[11px] text-slate-500 font-mono">Net: AED ${totals.taxable.toFixed(2)} | VAT: AED ${totals.vat.toFixed(2)}</span>
+              </div>
+              <span class="text-3xl font-black text-amber-400 font-mono">AED ${totals.gross.toFixed(2)}</span>
+            </div>
+
+            <div class="space-y-3">
+              <label class="text-xs font-bold text-slate-300 block">Cash Tendered (AED):</label>
+              <input id="pay-cash-tendered" type="number" step="0.5" value="${totals.gross.toFixed(2)}" oninput="updateChangeAssistant(${totals.gross})" class="w-full text-center bg-slate-950 border border-slate-700 rounded-xl py-2.5 text-2xl font-bold font-mono text-white" />
+              
+              <div class="grid grid-cols-7 gap-1 pt-1">
+                ${[5, 10, 20, 50, 100, 200, 500].map(note => `
+                  <button onclick="document.getElementById('pay-cash-tendered').value = ${note}; updateChangeAssistant(${totals.gross});" class="py-2 bg-slate-800 hover:bg-slate-700 rounded font-bold font-mono text-xs text-emerald-400 border border-slate-700">${note}</button>
+                `).join('')}
+              </div>
+
+              <div class="p-3 bg-emerald-950/40 border border-emerald-800 rounded-xl flex justify-between items-center">
+                <span class="text-xs font-bold text-emerald-300">Change Due:</span>
+                <span id="txt-change-due" class="text-xl font-black text-emerald-400 font-mono">AED 0.00</span>
+              </div>
+            </div>
+
+            <div class="flex gap-2 mt-5">
+              <button onclick="completeSale('CARD', ${totals.gross}, 0)" class="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5">
+                <span>💳</span> <span>Card / POS</span>
+              </button>
+              <button onclick="processCashSale(${totals.gross})" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5">
+                <span>💵</span> <span>Complete Cash Sale</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function updateChangeAssistant(gross) {
+      const tendered = parseFloat(document.getElementById('pay-cash-tendered').value) || 0;
+      const change = Math.max(0, tendered - gross);
+      document.getElementById('txt-change-due').innerText = `AED ${change.toFixed(2)}`;
+    }
+
+    function processCashSale(gross) {
+      const tendered = parseFloat(document.getElementById('pay-cash-tendered').value) || 0;
+      if (tendered < gross) {
+        alert('Tendered cash is less than payable amount!');
+        return;
+      }
+      const change = Math.max(0, tendered - gross);
+      completeSale('CASH', gross, change, tendered);
+    }
+
+    // --- Complete Sale & Print Simplified Tax Invoice ---
+    function completeSale(method, gross, change = 0, tendered = gross) {
+      invoiceSeq++;
+      const totals = calculateCartTotals();
+      const invoiceNo = `INV-DXB01-POS01-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(invoiceSeq).padStart(4,'0')}`;
+      const nowIso = new Date().toISOString();
+      const tlvBase64 = generateUaeTlvBase64(TENANT.nameEn, TENANT.trn, nowIso, totals.gross, totals.vat);
+
+      // Record Shift Sale
+      if (method === 'CASH') currentShift.cashSales += totals.gross;
+      if (method === 'CARD') currentShift.cardSales += totals.gross;
+      currentShift.invoicesCount++;
+
+      // Thermal Receipt Preview Modal
+      const modal = document.getElementById('modal-container');
+      modal.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-2xl p-4 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center pb-2 mb-2 border-b border-slate-800 text-xs">
+              <span class="font-bold text-emerald-400">✓ Sale Completed (ESC p Drawer Popped)</span>
+              <button onclick="closeModal()" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <!-- Thermal Receipt (80mm) -->
+            <div id="printable-receipt" class="p-4 bg-white text-slate-950 font-mono text-[11px] leading-tight overflow-y-auto max-h-[60vh] rounded">
+              <div class="text-center space-y-0.5 border-b border-dashed border-slate-400 pb-2 mb-2">
+                <div class="text-sm font-black uppercase">TAX INVOICE</div>
+                <div class="font-bold">فاتورة ضريبية</div>
+                <div class="font-bold">${TENANT.nameEn}</div>
+                <div class="text-[10px]">${TENANT.nameAr}</div>
+                <div class="text-[10px]">${TENANT.address}</div>
+                <div class="text-[10px]">Tel: ${TENANT.phone}</div>
+                <div class="font-bold mt-1">TRN / الرقم الضريبي: ${TENANT.trn}</div>
+              </div>
+
+              <div class="space-y-0.5 text-[10px] border-b border-dashed border-slate-400 pb-2 mb-2">
+                <div class="flex justify-between"><span>Inv:</span><span>${invoiceNo}</span></div>
+                <div class="flex justify-between"><span>Date:</span><span>${new Date().toLocaleString('en-GB')}</span></div>
+                <div class="flex justify-between"><span>Type:</span><span>${currentOrderType}</span></div>
+                <div class="flex justify-between"><span>Cashier:</span><span>${currentShift.cashier}</span></div>
+              </div>
+
+              <div class="border-b border-dashed border-slate-400 pb-2 mb-2 space-y-1">
+                ${cart.map(i => `
+                  <div class="flex justify-between font-bold">
+                    <span>${i.qty}x ${i.nameEn}</span>
+                    <span>${(i.unitPrice * i.qty).toFixed(2)} AED</span>
+                  </div>
+                  <div class="text-[9px] text-slate-600">${i.nameAr}</div>
+                `).join('')}
+              </div>
+
+              <div class="space-y-0.5 text-[10px] border-b border-dashed border-slate-400 pb-2 mb-2">
+                <div class="flex justify-between"><span>Taxable (Net):</span><span>${totals.taxable.toFixed(2)} AED</span></div>
+                <div class="flex justify-between font-bold"><span>VAT (5%):</span><span>${totals.vat.toFixed(2)} AED</span></div>
+                <div class="flex justify-between text-xs font-black pt-1 border-t border-slate-300">
+                  <span>TOTAL:</span><span>${totals.gross.toFixed(2)} AED</span>
+                </div>
+              </div>
+
+              <div class="space-y-0.5 text-[10px] border-b border-dashed border-slate-400 pb-2 mb-2">
+                <div class="flex justify-between"><span>Paid (${method}):</span><span>${totals.gross.toFixed(2)} AED</span></div>
+                ${method === 'CASH' ? `<div class="flex justify-between"><span>Change:</span><span>${change.toFixed(2)} AED</span></div>` : ''}
+              </div>
+
+              <!-- FTA TLV QR Box -->
+              <div class="text-center py-2">
+                <div class="w-28 h-28 mx-auto bg-slate-900 text-white flex flex-col items-center justify-center p-2 rounded text-[8px] break-all font-mono">
+                  <span>[UAE FTA QR CODE]</span>
+                  <span class="mt-1 text-[7px] text-slate-400">TLV Base64</span>
+                </div>
+                <div class="text-[9px] text-slate-500 mt-1">Scan for FTA Verification<br/>امسح للتحقق من الفاتورة</div>
+              </div>
+
+              <div class="text-center text-[9px] text-slate-500 pt-1 border-t border-dashed border-slate-300">
+                Prices incl. 5% UAE VAT • شكراً لزيارتكم
+              </div>
+            </div>
+
+            <div class="flex gap-2 mt-3">
+              <button onclick="window.print()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs">🖨️ Print Receipt</button>
+              <button onclick="closeModal()" class="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg text-xs">New Sale</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      clearCurrentCart();
+    }
+
+    // --- Shift Manager Modal ---
+    function openShiftModal() {
+      const expectedCash = currentShift.float + currentShift.cashSales;
+      const modal = document.getElementById('modal-container');
+      modal.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h3 class="font-bold text-sm text-slate-100">💼 Shift Management (X & Z Report)</h3>
+              <button onclick="closeModal()" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div class="space-y-2 text-xs font-mono bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <div class="flex justify-between"><span class="text-slate-400">Cashier:</span><span class="text-white">${currentShift.cashier}</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">Opening Float:</span><span class="text-white">AED ${currentShift.float.toFixed(2)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">Cash Sales:</span><span class="text-emerald-400">AED ${currentShift.cashSales.toFixed(2)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">Card Sales:</span><span class="text-blue-400">AED ${currentShift.cardSales.toFixed(2)}</span></div>
+              <div class="flex justify-between font-bold pt-2 border-t border-slate-800 text-sm">
+                <span class="text-slate-200">Expected Cash:</span>
+                <span class="text-emerald-400">AED ${expectedCash.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-slate-300 block">End of Shift Physical Counted Cash (AED):</label>
+              <input id="shift-counted-cash" type="number" step="0.5" placeholder="e.g. ${expectedCash.toFixed(2)}" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white font-mono" />
+            </div>
+
+            <div class="flex gap-2">
+              <button onclick="closeModal()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">Cancel</button>
+              <button onclick="closeShiftZReport(${expectedCash})" class="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold">Close Shift (Z-Report)</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function closeShiftZReport(expected) {
+      const counted = parseFloat(document.getElementById('shift-counted-cash').value);
+      if (isNaN(counted)) {
+        alert('Please enter actual counted cash in drawer!');
+        return;
+      }
+      const discrepancy = counted - expected;
+      alert(`Shift Session Closed Successfully!\nExpected Cash: AED ${expected.toFixed(2)}\nCounted Cash: AED ${counted.toFixed(2)}\nDiscrepancy: ${discrepancy >= 0 ? '+' : ''}AED ${discrepancy.toFixed(2)}\nZ-Report dispatched to thermal printer.`);
+      currentShift.cashSales = 0;
+      currentShift.cardSales = 0;
+      closeModal();
+    }
+
+    function popCashDrawer() {
+      alert('Cash Drawer Pulse Triggered (ESC p m t1 t2 - 24V pulse sent to receipt printer pin 2)');
+    }
+
+    function promptSupervisorDiscount() {
+      const pin = prompt('Enter Supervisor PIN for Discount override (PIN: 9999):');
+      if (pin === '9999') {
+        const disc = parseFloat(prompt('Enter discount amount in AED:', '2.00'));
+        if (!isNaN(disc) && disc >= 0) {
+          orderDiscount = disc;
+          renderCart();
+        }
+      } else if (pin !== null) {
+        alert('Unauthorized! Invalid Supervisor PIN.');
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal-container').innerHTML = '';
+    }
+
+    // --- Init ---
+    renderCafeteriaGrid();
+    renderStationeryCatalog();
+    renderCart();
+  </script>
+</body>
+</html>
