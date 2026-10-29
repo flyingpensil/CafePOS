@@ -12,6 +12,8 @@ export interface FtaQrData {
   vatTotal: number;      // Tag 5: Total 5% VAT in AED (e.g. 1.21)
 }
 
+declare const Buffer: any;
+
 export class FtaQrEngine {
   /**
    * Encodes an individual TLV entry: [Tag: 1 byte, Length: 1 byte, Value: N bytes]

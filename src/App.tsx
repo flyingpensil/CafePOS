@@ -393,7 +393,7 @@ export const App: React.FC = () => {
         ) : (
           <StationeryView
             products={products}
-            onAddToCart={handleAddToCart}
+            onAddToCart={(prod, qty) => handleAddToCart(prod, [], undefined, qty)}
             lang={lang}
           />
         )}
